@@ -614,7 +614,9 @@ fun ConfigurationScreen(
                         }
                     }
                 }
-            } else {
+            }
+
+            if (!isBackgroundGranted) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                     modifier = Modifier.fillMaxWidth()
