@@ -614,7 +614,7 @@ fun ConfigurationScreen(
                         }
                     }
                 }
-            } else if (hasPermissions == true) {
+            } else {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                     modifier = Modifier.fillMaxWidth()
