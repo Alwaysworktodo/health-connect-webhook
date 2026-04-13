@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Shield
@@ -39,6 +40,15 @@ import com.hcwebhook.app.*
 import com.hcwebhook.app.ui.theme.*
 import kotlinx.coroutines.launch
 import java.util.Calendar
+
+private data class ScheduleDraft(
+    val id: String? = null,
+    val hour: Int,
+    val minute: Int,
+    val label: String = "",
+    val enabled: Boolean = true,
+    val weekdays: Set<Int> = ScheduledSync.allWeekdays().toSet()
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +69,7 @@ fun ConfigurationScreen(
     var syncInterval by remember { mutableStateOf(preferencesManager.getSyncIntervalMinutes().toString()) }
     var scheduledSyncs by remember { mutableStateOf(preferencesManager.getScheduledSyncs()) }
     var enabledDataTypes by remember { mutableStateOf(preferencesManager.getEnabledDataTypes()) }
+    var scheduleDraft by remember { mutableStateOf<ScheduleDraft?>(null) }
 
     var showPermissionModal by remember { mutableStateOf(false) }
     var selectedDataTypeForPermission by remember { mutableStateOf<HealthDataType?>(null) }
@@ -412,11 +423,30 @@ fun ConfigurationScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = schedule.getDisplayTime(), // We might need to format this better or use helper
-                                        style = MaterialTheme.typography.titleMedium
-                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = schedule.getDisplayTime(),
+                                            style = MaterialTheme.typography.titleMedium
+                                        )
+                                        Text(
+                                            text = schedule.getDisplayWeekdays(),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                     Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = {
+                                            scheduleDraft = ScheduleDraft(
+                                                id = schedule.id,
+                                                hour = schedule.hour,
+                                                minute = schedule.minute,
+                                                label = schedule.label,
+                                                enabled = schedule.enabled,
+                                                weekdays = schedule.normalizedWeekdays().toSet()
+                                            )
+                                        }) {
+                                            Icon(Icons.Filled.Edit, contentDescription = "Edit")
+                                        }
                                         Switch(
                                             checked = schedule.enabled,
                                             onCheckedChange = { enabled ->
@@ -446,30 +476,144 @@ fun ConfigurationScreen(
                             Button(
                                 onClick = {
                                     val calendar = Calendar.getInstance()
-                                    TimePickerDialog(
-                                        context,
-                                        { _, hour, minute ->
-                                            val newSchedule = ScheduledSync.create(hour, minute)
-                                            val updatedList = scheduledSyncs + newSchedule
-                                            scheduledSyncs = updatedList
-                                            preferencesManager.setScheduledSyncs(updatedList)
-                                            ScheduledSyncManager(context).scheduleAlarm(newSchedule)
-                                        },
-                                        calendar.get(Calendar.HOUR_OF_DAY),
-                                        calendar.get(Calendar.MINUTE),
-                                        true
-                                    ).show()
+                                    scheduleDraft = ScheduleDraft(
+                                        hour = calendar.get(Calendar.HOUR_OF_DAY),
+                                        minute = calendar.get(Calendar.MINUTE)
+                                    )
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Icon(Icons.Filled.Add, null)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Add Schedule Time")
+                                Text("Add Schedule")
+                            }
+
+                            scheduleDraft?.let { draft ->
+                                val weekdayOptions = ScheduledSync.allWeekdays()
+                                AlertDialog(
+                                    onDismissRequest = { scheduleDraft = null },
+                                    title = {
+                                        Text(if (draft.id == null) "Add Schedule" else "Edit Schedule")
+                                    },
+                                    text = {
+                                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                                            Text(
+                                                text = "Time: %02d:%02d".format(draft.hour, draft.minute),
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Button(
+                                                onClick = {
+                                                    TimePickerDialog(
+                                                        context,
+                                                        { _, hour, minute ->
+                                                            scheduleDraft = draft.copy(hour = hour, minute = minute)
+                                                        },
+                                                        draft.hour,
+                                                        draft.minute,
+                                                        true
+                                                    ).show()
+                                                }
+                                            ) {
+                                                Text("Change Time")
+                                            }
+                                            Spacer(modifier = Modifier.height(16.dp))
+                                            Text(
+                                                text = "Weekdays",
+                                                style = MaterialTheme.typography.titleSmall
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            weekdayOptions.forEach { dayOfWeek ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            scheduleDraft = draft.copy(
+                                                                weekdays = if (dayOfWeek in draft.weekdays) {
+                                                                    draft.weekdays - dayOfWeek
+                                                                } else {
+                                                                    draft.weekdays + dayOfWeek
+                                                                }
+                                                            )
+                                                        }
+                                                        .padding(vertical = 2.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Checkbox(
+                                                        checked = dayOfWeek in draft.weekdays,
+                                                        onCheckedChange = { checked ->
+                                                            scheduleDraft = draft.copy(
+                                                                weekdays = if (checked) {
+                                                                    draft.weekdays + dayOfWeek
+                                                                } else {
+                                                                    draft.weekdays - dayOfWeek
+                                                                }
+                                                            )
+                                                        }
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(ScheduledSync.weekdayShortName(dayOfWeek))
+                                                }
+                                            }
+                                        }
+                                    },
+                                    confirmButton = {
+                                        TextButton(onClick = {
+                                            val currentDraft = scheduleDraft ?: return@TextButton
+                                            val normalizedWeekdays = normalizeWeekdays(currentDraft.weekdays)
+                                            val syncManager = ScheduledSyncManager(context)
+
+                                            if (currentDraft.id == null) {
+                                                val newSchedule = ScheduledSync.create(
+                                                    hour = currentDraft.hour,
+                                                    minute = currentDraft.minute,
+                                                    label = currentDraft.label,
+                                                    enabled = currentDraft.enabled,
+                                                    weekdays = normalizedWeekdays
+                                                )
+                                                val updatedList = scheduledSyncs + newSchedule
+                                                scheduledSyncs = updatedList
+                                                preferencesManager.setScheduledSyncs(updatedList)
+                                                if (newSchedule.enabled) {
+                                                    syncManager.scheduleAlarm(newSchedule)
+                                                }
+                                            } else {
+                                                val updatedList = scheduledSyncs.map { existing ->
+                                                    if (existing.id == currentDraft.id) {
+                                                        existing.copy(
+                                                            hour = currentDraft.hour,
+                                                            minute = currentDraft.minute,
+                                                            label = currentDraft.label,
+                                                            enabled = currentDraft.enabled,
+                                                            weekdays = normalizedWeekdays
+                                                        )
+                                                    } else {
+                                                        existing
+                                                    }
+                                                }
+                                                scheduledSyncs = updatedList
+                                                preferencesManager.setScheduledSyncs(updatedList)
+                                                syncManager.cancelAlarm(currentDraft.id)
+                                                updatedList.find { it.id == currentDraft.id }?.takeIf { it.enabled }?.let {
+                                                    syncManager.scheduleAlarm(it)
+                                                }
+                                            }
+
+                                            scheduleDraft = null
+                                        }) {
+                                            Text("Save")
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { scheduleDraft = null }) {
+                                            Text("Cancel")
+                                        }
+                                    }
+                                )
                             }
                         }
                     }
                 }
-            }
             } else if (hasPermissions == true) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
@@ -571,6 +715,11 @@ fun ConfigurationScreen(
             )
         }
     }
+}
+
+private fun normalizeWeekdays(days: Set<Int>): List<Int> {
+    val selected = if (days.isEmpty()) ScheduledSync.allWeekdays().toSet() else days
+    return ScheduledSync.allWeekdays().filter { it in selected }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

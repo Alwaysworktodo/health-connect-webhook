@@ -54,17 +54,8 @@ class ScheduledSyncManager(private val context: Context) {
         if (preferencesManager.getSyncMode() != SyncMode.SCHEDULED) {
             return
         }
-        
-        val calendar = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, schedule.hour)
-            set(Calendar.MINUTE, schedule.minute)
-            set(Calendar.SECOND, 0)
-            
-            // If the time has already passed today, schedule for tomorrow
-            if (timeInMillis < System.currentTimeMillis()) {
-                add(Calendar.DAY_OF_YEAR, 1)
-            }
-        }
+
+        val calendar = findNextRunTime(schedule)
         
         val intent = Intent(context, ScheduledSyncReceiver::class.java).apply {
             action = ACTION_SCHEDULED_SYNC
@@ -86,6 +77,35 @@ class ScheduledSyncManager(private val context: Context) {
                 calendar.timeInMillis,
                 pendingIntent
             )
+        }
+    }
+
+    private fun findNextRunTime(schedule: ScheduledSync): Calendar {
+        val nowMillis = System.currentTimeMillis()
+        val allowedWeekdays = schedule.normalizedWeekdays().toSet()
+
+        repeat(14) { dayOffset ->
+            val candidate = Calendar.getInstance().apply {
+                timeInMillis = nowMillis
+                add(Calendar.DAY_OF_YEAR, dayOffset)
+                set(Calendar.HOUR_OF_DAY, schedule.hour)
+                set(Calendar.MINUTE, schedule.minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+
+            if (candidate.timeInMillis > nowMillis && candidate.get(Calendar.DAY_OF_WEEK) in allowedWeekdays) {
+                return candidate
+            }
+        }
+
+        return Calendar.getInstance().apply {
+            timeInMillis = nowMillis
+            add(Calendar.DAY_OF_YEAR, 7)
+            set(Calendar.HOUR_OF_DAY, schedule.hour)
+            set(Calendar.MINUTE, schedule.minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
         }
     }
     
