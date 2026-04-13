@@ -717,6 +717,8 @@ fun ConfigurationScreen(
     }
 }
 
+}
+
 private fun normalizeWeekdays(days: Set<Int>): List<Int> {
     val selected = if (days.isEmpty()) ScheduledSync.allWeekdays().toSet() else days
     return ScheduledSync.allWeekdays().filter { it in selected }
